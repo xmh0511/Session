@@ -5,7 +5,7 @@
 #ifndef CINATRA_SESSION_UTILS_HPP
 #define CINATRA_SESSION_UTILS_HPP
 #include "session.hpp"
-namespace Session {
+namespace session {
 	class session_manager {
 	public:
 		session_manager() = delete;
