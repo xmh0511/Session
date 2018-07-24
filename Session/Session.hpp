@@ -1,3 +1,6 @@
+//
+// Created by xmh on 18-5-7.
+//
 #pragma once
 #include <iostream>
 #include <string>
@@ -6,105 +9,98 @@
 #include <chrono>
 #include <ctime>
 #include <mutex>
-class Session;
-std::map<std::string, Session*> *GLOBAL_SESSION=nullptr;
-class Session
-{
-public:
-	Session(std::string name, std::string id, std::size_t expire, std::string path = "", std::string domain = "")
-	{
-		this->name = name;
-		this->id = id;
-		this->expire = expire;
-		this->path = path;
-		this->domain = domain;
-		std::time_t time = getTimeStamp();
-		this->timestamp = expire * 1000 + time;
-		if (GLOBAL_SESSION == nullptr) {
-			Session::_threadLock.lock();
-			GLOBAL_SESSION = new std::map<std::string, Session*>();
-			Session::_threadLock.unlock();
-		}
-		Session::_threadLock.lock();
-		GLOBAL_SESSION->insert(std::make_pair(this->id, this));
-		Session::_threadLock.unlock();
-	}
-	void setData(std::string name, std::any data)
-	{
-		Session::_threadLock.lock();
-		_data[name] = data;
-		Session::_threadLock.unlock();
-	}
-	template<typename Type>
-	Type getData(std::string name)
-	{
-		auto itert = _data.find(name);
-		if (itert != _data.end())
-		{
-			return std::any_cast<Type>(itert->second);
-		}
-		return Type{};
-	}
-public:
-	static Session* get(std::string id)
-	{
-		if (GLOBAL_SESSION != nullptr) 
-		{
-			auto iter = GLOBAL_SESSION->find(id);
-			if (iter != GLOBAL_SESSION->end())
-			{
-				return iter->second;
-			}
-			return nullptr;
-		}
-		return nullptr;
-	}
-	static std::map<std::string, Session*>::iterator del(std::map<std::string, Session*>::iterator iter)
-	{
-			return GLOBAL_SESSION->erase(iter);
-	}
-	static void ticktime()
-	{
-		Session::_threadLock.lock();
-		if (GLOBAL_SESSION != nullptr)
-		{
-			std::cout << "GLOBALSize=="<<GLOBAL_SESSION->size() << std::endl;
-			std::time_t nowTimeStamp = Session::getTimeStamp();
-			for (auto iter = GLOBAL_SESSION->begin(); iter != GLOBAL_SESSION->end();)
-			{
-				if (iter->second->timestamp < nowTimeStamp)
-				{
-					iter = Session::del(iter);
-				}
-				else {
-					iter++;
-				}
-			}
-		}
-		Session::_threadLock.unlock();
-	}
-public:
-	static std::mutex _threadLock;
-private:
-	std::string name;
-	std::string id;
-	std::string path;
-	std::string domain;
-	std::size_t expire;
-	std::time_t timestamp;
-	std::map<std::string, std::any> _data;
-private:
-	Session()
-	{
+#include <cstring>
+#include "uuid.h"
+#include <memory>
+#include "cookie.hpp"
+namespace cinatra {
 
-	}
-public:
-	static std::time_t getTimeStamp()
+	class session
 	{
-		std::chrono::time_point<std::chrono::system_clock, std::chrono::milliseconds> tp = std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::system_clock::now());
-		auto tmp = std::chrono::duration_cast<std::chrono::milliseconds>(tp.time_since_epoch());
-		std::time_t timestamp = tmp.count();
-		return timestamp;
-	}
-};
-std::mutex Session::_threadLock;
+	public:
+		session(const std::string& name, const std::string& uuid_str, std::size_t expire, 
+			const std::string& path = "/", const std::string& domain = "")
+		{
+			id_ = uuid_str;
+			expire_ = expire == -1 ? 600 : expire;
+			std::time_t now = std::time(nullptr);
+			time_stamp_ = expire_ + now;
+			cookie_.set_name(name);
+			cookie_.set_path(path);
+			cookie_.set_domain(domain);
+			cookie_.set_value(uuid_str);
+			cookie_.set_version(0);
+			cookie_.set_max_age(expire == -1 ? -1 : time_stamp_);
+		}
+
+		void set_data(const std::string& name, std::any data)
+		{
+			std::unique_lock<std::mutex> lock(mtx_);
+			data_[name] = std::move(data);
+		}
+
+		template<typename T>
+		T get_data(const std::string& name)
+		{
+			std::unique_lock<std::mutex> lock(mtx_);
+			auto itert = data_.find(name);
+			if (itert != data_.end())
+			{
+				return std::any_cast<T>(itert->second);
+			}
+			return T{};
+		}
+
+		bool has(const std::string& name) {
+			std::unique_lock<std::mutex> lock(mtx_);
+			return data_.find(name) != data_.end();
+		}
+
+		const std::string get_id()
+		{
+			return id_;
+		}
+
+		void set_max_age(const std::time_t seconds)
+		{
+			std::unique_lock<std::mutex> lock(mtx_);
+			is_update_ = true;
+			expire_ = seconds == -1 ? 600 : seconds;
+			std::time_t now = std::time(nullptr);
+			time_stamp_ = now + expire_;
+			cookie_.set_max_age(seconds == -1 ? -1 : time_stamp_);
+		}
+
+		cinatra::cookie get_cookie()
+		{
+			return cookie_;
+		}
+
+		std::time_t time_stamp() {
+			return time_stamp_;
+		}
+
+		bool is_need_update()
+		{
+			std::unique_lock<std::mutex> lock(mtx_);
+			return is_update_;
+		}
+
+		void set_need_update(bool flag)
+		{
+			std::unique_lock<std::mutex> lock(mtx_);
+			is_update_ = flag;
+		}
+
+	private:
+		session() = delete;
+
+		std::string id_;
+		std::size_t expire_;
+		std::time_t time_stamp_;
+		std::map<std::string, std::any> data_;
+		std::mutex mtx_;
+		cookie cookie_;
+		bool is_update_ = true;
+	};
+}
