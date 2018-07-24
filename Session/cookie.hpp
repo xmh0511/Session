@@ -2,7 +2,7 @@
 #include <string>
 #include "utils.hpp"
 
-namespace cinatra {
+namespace Session {
 	class cookie {
 	public:
 		cookie() = default;
