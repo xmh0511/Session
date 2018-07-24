@@ -13,7 +13,7 @@
 #include "uuid.h"
 #include <memory>
 #include "cookie.hpp"
-namespace cinatra {
+namespace Session {
 
 	class session
 	{
