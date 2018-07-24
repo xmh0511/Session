@@ -1,8 +1,7 @@
 #pragma once
 #include <string>
-#include "utils.hpp"
 
-namespace Session {
+namespace session {
 	class cookie {
 	public:
 		cookie() = default;
